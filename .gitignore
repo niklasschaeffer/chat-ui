@@ -13,6 +13,7 @@ SECRET_CONFIG
 !.env
 gcp-*.json
 db
+.serena
 models/*
 !models/add-your-models-here.txt
 .claude/*

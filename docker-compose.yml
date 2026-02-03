@@ -1,21 +1,116 @@
-# For development only
-# Set MONGODB_URL=mongodb://localhost:27017 in .env.local to use this container
+# Docker Compose for Chat UI
+# Usage:
+#   docker-compose up -d                    # Start app only (uses embedded/in-memory DB or external MongoDB)
+#   docker-compose --profile db up -d       # Start app with MongoDB container
+#   docker-compose --profile bundled up -d  # Start app with built-in MongoDB (single container)
+#   docker-compose --profile app-only up -d # Start only the Node.js app (no DB at all)
+
 services:
+  # MongoDB service (optional, use with --profile db)
   mongo:
     image: mongo:8
     hostname: mongodb
     ports:
       - ${LOCAL_MONGO_PORT:-27017}:27017
-    command: --replSet rs0 --bind_ip_all #--setParameter notablescan=1
+    command: --replSet rs0 --bind_ip_all
     mem_limit: "5g"
     mem_reservation: "3g"
     healthcheck:
-      # need to specify the hostname here because the default is the container name, and we run the app outside of docker
-      test: test $$(mongosh --quiet --eval 'try {rs.status().ok} catch(e) {rs.initiate({_id:"rs0",members:[{_id:0,host:"127.0.0.1:${LOCAL_MONGO_PORT:-27017}"}]}).ok}') -eq 1
+      test: test $$(mongosh --quiet --eval 'try {rs.status().ok} catch(e) {rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb:27017"}]}).ok}') -eq 1
       interval: 5s
     volumes:
       - mongodb-data:/data/db
     restart: always
+    profiles:
+      - db
+    networks:
+      - chat-ui-network
+
+  # Chat UI Application (default - no DB dependencies)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - INCLUDE_DB=false
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-chat-ui}
+      - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
+      - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
+      - PUBLIC_APP_DESCRIPTION=${PUBLIC_APP_DESCRIPTION:-Making the community's best AI chat models available to everyone.}
+      - DOTENV_LOCAL=${DOTENV_LOCAL}
+    env_file:
+      - .env.local
+    volumes:
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    networks:
+      - chat-ui-network
+
+  # App only - explicit profile for running just the Node.js app without any database
+  # Use this when you have an external MongoDB or want to use the in-memory fallback
+  app-only:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - INCLUDE_DB=false
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-chat-ui}
+      - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
+      - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
+      - PUBLIC_APP_DESCRIPTION=${PUBLIC_APP_DESCRIPTION:-Making the community's best AI chat models available to everyone.}
+      - DOTENV_LOCAL=${DOTENV_LOCAL}
+    env_file:
+      - .env.local
+    volumes:
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    profiles:
+      - app-only
+    networks:
+      - chat-ui-network
+
+  # Chat UI with built-in MongoDB (all-in-one container)
+  app-with-db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - INCLUDE_DB=true
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
+      - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
+      - DOTENV_LOCAL=${DOTENV_LOCAL}
+    env_file:
+      - .env.local
+    volumes:
+      - chat-ui-db-data:/data/db
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    profiles:
+      - bundled
+    networks:
+      - chat-ui-network
 
 volumes:
   mongodb-data:
+  chat-ui-db-data:
+
+networks:
+  chat-ui-network:
+    driver: bridge
