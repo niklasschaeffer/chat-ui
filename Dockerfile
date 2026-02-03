@@ -38,6 +38,8 @@ RUN chmod +x /app/entrypoint.sh
 
 FROM node:24 AS builder
 
+RUN apt-get update && apt-get install -y python3 make g++ libvips-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --link --chown=1000 package-lock.json package.json ./
@@ -45,6 +47,7 @@ COPY --link --chown=1000 package-lock.json package.json ./
 ARG APP_BASE=
 ARG PUBLIC_APP_COLOR=
 ENV BODY_SIZE_LIMIT=15728640
+ENV SHARP_IGNORE_GLOBAL_LIBVIPS=1
 
 RUN --mount=type=cache,target=/app/.npm \
     npm set cache /app/.npm && \
