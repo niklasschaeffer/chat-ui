@@ -4,6 +4,7 @@
 #   docker-compose --profile db up -d       # Start app with MongoDB container
 #   docker-compose --profile bundled up -d  # Start app with built-in MongoDB (single container)
 #   docker-compose --profile app-only up -d # Start only the Node.js app (no DB at all)
+#   docker-compose --profile prebuilt up -d # Use pre-built HF image (no build required)
 
 services:
   # MongoDB service (optional, use with --profile db)
@@ -26,7 +27,51 @@ services:
     networks:
       - chat-ui-network
 
-  # Chat UI Application (default - no DB dependencies)
+  # Pre-built Hugging Face image (no build required)
+  prebuilt:
+    image: ghcr.io/huggingface/chat-ui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-chat-ui}
+      - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
+      - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
+    env_file:
+      - .env.local
+    volumes:
+      - ./.env.local:/app/.env.local:ro
+      - chat-ui-data:/data
+    restart: unless-stopped
+    profiles:
+      - prebuilt
+    networks:
+      - chat-ui-network
+
+  # Pre-built with built-in MongoDB
+  prebuilt-with-db:
+    image: ghcr.io/huggingface/chat-ui-db:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
+      - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
+    env_file:
+      - .env.local
+    volumes:
+      - chat-ui-db-data:/data
+      - ./.env.local:/app/.env.local:ro
+    restart: unless-stopped
+    profiles:
+      - prebuilt-db
+    networks:
+      - chat-ui-network
+
+  # Chat UI Application (build from source)
   app:
     build:
       context: .
@@ -38,7 +83,7 @@ services:
     environment:
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://router.huggingface.co/v1}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - MONGODB_URL=${MONGODB_URL}
+      - MONGODB_URL=${MONGODB_URL:-mongodb://mongo:27017}
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-chat-ui}
       - PUBLIC_APP_NAME=${PUBLIC_APP_NAME:-ChatUI}
       - PUBLIC_APP_ASSETS=${PUBLIC_APP_ASSETS:-chatui}
@@ -53,7 +98,6 @@ services:
       - chat-ui-network
 
   # App only - explicit profile for running just the Node.js app without any database
-  # Use this when you have an external MongoDB or want to use the in-memory fallback
   app-only:
     build:
       context: .
@@ -109,6 +153,7 @@ services:
 
 volumes:
   mongodb-data:
+  chat-ui-data:
   chat-ui-db-data:
 
 networks:
